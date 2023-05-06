@@ -479,8 +479,8 @@ class BinanceSpotRestAPi(RestClient):
         for account_data in data["balances"]:
             account: AccountData = AccountData(
                 accountid=account_data["asset"],
-                balance=float(account_data["free"]) +
-                float(account_data["locked"]),
+                balance=float(account_data["free"])
+                + float(account_data["locked"]),
                 frozen=float(account_data["locked"]),
                 gateway_name=self.gateway_name
             )
