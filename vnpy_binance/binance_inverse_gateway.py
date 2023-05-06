@@ -4,6 +4,7 @@
 3. 只支持反向合约
 """
 
+import random
 import urllib
 import hashlib
 import hmac
@@ -82,14 +83,16 @@ ORDERTYPE_VT2BINANCES: Dict[OrderType, Tuple[str, str]] = {
     OrderType.FAK: ("LIMIT", "IOC"),
     OrderType.FOK: ("LIMIT", "FOK"),
 }
-ORDERTYPE_BINANCES2VT: Dict[Tuple[str, str], OrderType] = {v: k for k, v in ORDERTYPE_VT2BINANCES.items()}
+ORDERTYPE_BINANCES2VT: Dict[Tuple[str, str], OrderType] = {
+    v: k for k, v in ORDERTYPE_VT2BINANCES.items()}
 
 # 买卖方向映射
 DIRECTION_VT2BINANCES: Dict[Direction, str] = {
     Direction.LONG: "BUY",
     Direction.SHORT: "SELL"
 }
-DIRECTION_BINANCES2VT: Dict[str, Direction] = {v: k for k, v in DIRECTION_VT2BINANCES.items()}
+DIRECTION_BINANCES2VT: Dict[str, Direction] = {
+    v: k for k, v in DIRECTION_VT2BINANCES.items()}
 
 # 数据频率映射
 INTERVAL_VT2BINANCES: Dict[Interval, str] = {
@@ -135,9 +138,13 @@ class BinanceInverseGateway(BaseGateway):
         """构造函数"""
         super().__init__(event_engine, gateway_name)
 
-        self.trade_ws_api: "BinanceInverseTradeWebsocketApi" = BinanceInverseTradeWebsocketApi(self)
-        self.market_ws_api: "BinanceInverseDataWebsocketApi" = BinanceInverseDataWebsocketApi(self)
+        self.trade_ws_api: "BinanceInverseTradeWebsocketApi" = BinanceInverseTradeWebsocketApi(
+            self)
+        self.market_ws_api: "BinanceInverseDataWebsocketApi" = BinanceInverseDataWebsocketApi(
+            self)
         self.rest_api: "BinanceInverseRestApi" = BinanceInverseRestApi(self)
+        self.positon_time: int = random.randint(11, 15)
+        self.account_time: int = random.randint(30, 35)
 
         self.orders: Dict[str, OrderData] = {}
 
@@ -188,6 +195,14 @@ class BinanceInverseGateway(BaseGateway):
         """定时事件处理"""
         self.rest_api.keep_user_stream()
 
+        now: datetime = datetime.now(CHINA_TZ)
+        if now.second == self.positon_time:
+            self.rest_api.query_position()
+
+        if now.second == self.account_time:
+            self.rest_api.query_account()
+            self.rest_api.query_time()
+
     def on_order(self, order: OrderData) -> None:
         """推送委托数据"""
         self.orders[order.orderid] = copy(order)
@@ -230,7 +245,8 @@ class BinanceInverseRestApi(RestClient):
             return request
 
         if request.params:
-            path: str = request.path + "?" + urllib.parse.urlencode(request.params)
+            path: str = request.path + "?" + \
+                urllib.parse.urlencode(request.params)
         else:
             request.params = dict()
             path: str = request.path
@@ -381,7 +397,7 @@ class BinanceInverseRestApi(RestClient):
     def send_order(self, req: OrderRequest) -> str:
         """委托下单"""
         # 生成本地委托号
-        orderid: str = str(self.connect_time + self._new_order_id())
+        orderid: str = f"x-k9bVXkrv{self.connect_time + self._new_order_id()}"
 
         # 推送提交中事件
         order: OrderData = req.create_order_data(
@@ -766,12 +782,12 @@ class BinanceInverseTradeWebsocketApi(WebsocketClient):
         elif packet["e"] == "listenKeyExpired":
             self.on_listen_key_expired()
 
-    def on_listen_key_expired(self) ->None:
+    def on_listen_key_expired(self) -> None:
         """ListenKey过期"""
         self.gateway.write_log("listenKey过期")
         self.disconnect()
 
-    def disconnect(self) ->None:
+    def disconnect(self) -> None:
         """"主动断开webscoket链接"""
         self._active = False
         ws = self._ws
@@ -818,7 +834,8 @@ class BinanceInverseTradeWebsocketApi(WebsocketClient):
         order_type: OrderType = ORDERTYPE_BINANCES2VT.get(key, None)
         if not order_type:
             return
-        offset = self.gateway.get_order(ord_data["c"]).offset if self.gateway.get_order(ord_data["c"]) else None
+        offset = self.gateway.get_order(
+            ord_data["c"]).offset if self.gateway.get_order(ord_data["c"]) else None
 
         order: OrderData = OrderData(
             symbol=ord_data["s"],
